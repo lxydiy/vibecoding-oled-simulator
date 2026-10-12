@@ -1,6 +1,20 @@
 #include "oled_fb.h"
 #include "oled_switch.h"
+#include "oled_log.h"
+#include "demo.h"
 #include "font6x8.h"
+
+static int last_mask;
+
+void demo_init(void)
+{
+    /* Simulated firmware initialization before while (1): reset application
+     * state, announce configuration, and draw the initial screen once. */
+    last_mask = -1;
+    OLED_LOGI("demo", "init: OLED %dx%d, switches 1-4", OLED_WIDTH, OLED_HEIGHT);
+    OLED_LOGD("demo", "drawing initial text, lines and rectangles");
+    demo_update();
+}
 
 /* Application helpers adapted from the reference User/hal/oled.c.
  * They remain private to this example, not part of the simulated HAL. */
@@ -47,11 +61,15 @@ static void rectangle(int x, int y, int right, int bottom, bool filled)
 /* Called by the executable host, never exported by oled_sim. */
 void demo_update(void)
 {
-    static int last_mask = -1;
     int mask = 0;
     for (uint8_t id = 1; id <= 4; ++id)
         if (oled_switch_is_pressed(id)) mask |= 1 << (id - 1);
     if (mask == last_mask) return;
+    if (last_mask >= 0) {
+        for (int i = 0; i < 4; ++i)
+            if ((mask ^ last_mask) & (1 << i))
+                OLED_LOGI("keys", "SW%d %s", i + 1, mask & (1 << i) ? "DOWN" : "UP");
+    }
     last_mask = mask;
 
     oled_fb_clear_buffer();

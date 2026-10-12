@@ -11,3 +11,4 @@ EXPORTS
     oled_fb_draw_image
     oled_fb_init
     oled_switch_is_pressed
+    oled_log_write

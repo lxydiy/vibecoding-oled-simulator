@@ -85,6 +85,6 @@ int main(int argc, char **argv)
     CHECK(!oled_switch_is_pressed(1));
     /* The library must not terminate its host when the viewer closes. */
     oled_fb_send_buffer();
-    puts("PASS: DLL API, Win32 pixels/resize/power, keys/repeat/chord/focus/close");
+    puts("PASS: library API, Win32 pixels/resize/power, keys/repeat/chord/focus/close");
     return 0;
 }

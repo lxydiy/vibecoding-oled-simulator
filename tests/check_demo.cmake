@@ -1,0 +1,10 @@
+execute_process(COMMAND "${EXECUTABLE}" --smoke RESULT_VARIABLE result
+    OUTPUT_VARIABLE output ERROR_VARIABLE errors TIMEOUT 10)
+if(NOT result STREQUAL "0")
+    message(FATAL_ERROR "Demo failed: ${result}; ${output}; ${errors}")
+endif()
+string(REGEX MATCHALL "demo: init: OLED 128x64, switches 1-4" initializations "${errors}")
+list(LENGTH initializations count)
+if(NOT count EQUAL 1)
+    message(FATAL_ERROR "Expected exactly one application initialization, got ${count}: ${errors}")
+endif()

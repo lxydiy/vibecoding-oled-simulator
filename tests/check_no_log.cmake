@@ -1,0 +1,8 @@
+execute_process(COMMAND "${EXECUTABLE}" RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE errors)
+if(NOT result STREQUAL "0" OR NOT output STREQUAL "" OR NOT errors STREQUAL "")
+    message(FATAL_ERROR "Disabled logger evaluated arguments or emitted output: ${result}; ${output}; ${errors}")
+endif()
+file(STRINGS "${EXECUTABLE}" payload REGEX "OLED_DISABLED_PAYLOAD")
+if(payload)
+    message(FATAL_ERROR "Disabled log strings remain in the executable")
+endif()
