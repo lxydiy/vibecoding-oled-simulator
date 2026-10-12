@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# Preserve the supplied interface file byte-for-byte, including line endings.
+include/oled_fb.h -text whitespace=cr-at-eol

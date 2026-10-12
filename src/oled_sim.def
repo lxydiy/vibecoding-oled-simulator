@@ -1,0 +1,13 @@
+LIBRARY oled_sim
+EXPORTS
+    oled_fb_send_buffer
+    oled_fb_fill_buffer
+    oled_fb_clear_buffer
+    oled_fb_enable
+    oled_fb_before_fadein
+    oled_fb_fadeout
+    oled_fb_fadein
+    oled_fb_draw_dot
+    oled_fb_draw_image
+    oled_fb_init
+    oled_switch_is_pressed
