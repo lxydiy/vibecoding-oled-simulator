@@ -1,6 +1,6 @@
 #include "oled_fb.h"
 #include "oled_switch.h"
-#include "oled_log.h"
+#include "ui_log.h"
 #include "demo.h"
 #include "font6x8.h"
 
@@ -11,8 +11,8 @@ void demo_init(void)
     /* Simulated firmware initialization before while (1): reset application
      * state, announce configuration, and draw the initial screen once. */
     last_mask = -1;
-    OLED_LOGI("demo", "init: OLED %dx%d, switches 1-4", OLED_WIDTH, OLED_HEIGHT);
-    OLED_LOGD("demo", "drawing initial text, lines and rectangles");
+    UI_LOGI("demo", "init: OLED %dx%d, switches 1-4", OLED_WIDTH, OLED_HEIGHT);
+    UI_LOGD("demo", "drawing initial text, lines and rectangles");
     demo_update();
 }
 
@@ -68,7 +68,7 @@ void demo_update(void)
     if (last_mask >= 0) {
         for (int i = 0; i < 4; ++i)
             if ((mask ^ last_mask) & (1 << i))
-                OLED_LOGI("keys", "SW%d %s", i + 1, mask & (1 << i) ? "DOWN" : "UP");
+                UI_LOGI("keys", "SW%d %s", i + 1, mask & (1 << i) ? "DOWN" : "UP");
     }
     last_mask = mask;
 

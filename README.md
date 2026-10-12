@@ -39,7 +39,7 @@ target_link_libraries(my_app PRIVATE oled::sim)
 ```c
 #include "oled_fb.h"
 #include "oled_switch.h"
-#include "oled_log.h"
+#include "ui_log.h"
 
 void app_init(void);
 void app_update(void);   /* 保留应用自己的延时/调度 */
@@ -49,7 +49,7 @@ int main(void)
 {
     oled_fb_init();      /* 调用一次即自动弹窗，事件由内部线程处理 */
     app_init();         /* 模拟固件 while (1) 前的单次初始化 */
-    OLED_LOGI("app", "initialized");
+    UI_LOGI("app", "initialized");
     while (app_running()) {
         app_update();
     }
@@ -59,7 +59,7 @@ int main(void)
 
 应用中通过 `oled_switch_is_pressed(1)` 读取开关 1 的保持状态（编号 1–4，`true` 按下）；绘图后调用 `oled_fb_send_buffer()` 提交画面。OLED 函数应由同一应用线程调用。作为库时关闭窗口不会替宿主退出，宿主仍控制自己的循环；一个进程一个窗口，关闭后不重新打开。
 
-**日志与编译期裁剪。** 模拟器使用 `include/oled_log.h` + `src/oled_log.c`，由库统一编译，无需应用再添加 `.c`。输出到 `stderr`，参考 [ESP-IDF 日志格式](https://docs.espressif.com/projects/esp-idf/en/v5.0/esp32/api-reference/system/log.html)：
+**日志与编译期裁剪。** 模拟器使用 `include/ui_log.h` + `src/ui_log.c`，由库统一编译，无需应用再添加 `.c`。输出到 `stderr`，参考 [ESP-IDF 日志格式](https://docs.espressif.com/projects/esp-idf/en/v5.0/esp32/api-reference/system/log.html)：
 
 ```text
 I (123456) demo: init: OLED 128x64, switches 1-4
@@ -69,17 +69,17 @@ I (123472) keys: SW1 DOWN
 括号内是系统单调时钟毫秒数，不是应用启动后的相对时间。日志默认包含 ERROR/WARN/INFO，自动补换行；单条使用 1024 字节缓冲区，过长截断。使用 E/W/I/D/V 宏或通用函数调用形式：
 
 ```c
-#define OLED_LOG_LEVEL OLED_LOG_DEBUG       /* 全局上限，也可用编译定义 */
-#define OLED_LOG_MIN_LEVEL OLED_LOG_WARN    /* 下限：此文件仅输出 W/I/D */
-#include "oled_log.h"
+#define UI_LOG_LEVEL UI_LOG_DEBUG       /* 全局上限，也可用编译定义 */
+#define UI_LOG_MIN_LEVEL UI_LOG_WARN    /* 下限：此文件仅输出 W/I/D */
+#include "ui_log.h"
 
 void example(void)
 {
-    OLED_LOGI("app", "value=%d", 42);
-    oled_log_write(OLED_LOG_DEBUG, "app", "debug message");
+    UI_LOGI("app", "value=%d", 42); /* TAG 可直接使用字符串 */
+    ui_log_write(UI_LOG_DEBUG, "app", "debug message");
 }
 ```
 
-级别为 NONE=0、ERROR=1、WARN=2、INFO=3、DEBUG=4、VERBOSE=5。所有配置宏须在包含头文件前定义；`OLED_LOG_LOCAL_LEVEL` 可进一步降低当前文件上限。应用全局配置可用 `target_compile_definitions(my_app PRIVATE OLED_LOG_LEVEL=OLED_LOG_DEBUG)`。设为 `OLED_LOG_NONE` 完全裁剪；被禁用的 E/W/I/D/V 宏不保留参数代码、字符串或副作用。
+级别为 NONE=0、ERROR=1、WARN=2、INFO=3、DEBUG=4、VERBOSE=5。所有配置宏须在包含头文件前定义；`UI_LOG_LOCAL_LEVEL` 可进一步降低当前文件上限。应用全局配置可用 `target_compile_definitions(my_app PRIVATE UI_LOG_LEVEL=UI_LOG_DEBUG)`。日志宏至少需要 TAG、格式字符串两个参数，例如 `#define TAG "app"` 后使用 `UI_LOGI(TAG, "ready")`，或直接 `UI_LOGI("app", "ready")`。关闭的日志通过 `sizeof` 的不求值语义保留普通 C 函数调用检查；参数数量和类型由编译器按函数原型诊断，没有额外断言或类型检查宏。所有参数表达式仍须符合 C 语法及声明要求，但不会被求值，也不会输出日志。
 
-**实机生产环境完全关闭日志。** 只复制 `examples/no_logging/oled_log.h` 到实机工程的头文件目录，继续使用相同的 `#include "oled_log.h"` 和日志调用，**不加入模拟器或 `src/oled_log.c`**。该替代头文件没有任何依赖，所有日志宏及 `oled_log_write(...)` 都直接展开为空操作，包括参数中的表达式也不参与编译。确保替代头文件被实际选中（不要让源码旁残留同名的模拟器头文件）；若通过 include 路径切换，可将它的目录放在最前。
+**实机生产环境完全关闭日志。** 只复制 `examples/no_logging/ui_log.h` 到实机工程的头文件目录，继续使用相同的 `#include "ui_log.h"` 和日志调用，**不加入模拟器或 `src/ui_log.c`**。该替代头文件只声明日志函数，使用 `sizeof` 保留编译诊断而不执行调用；不需要函数实现，不求值参数，也不输出。确保替代头文件被实际选中（不要让源码旁残留同名的模拟器头文件）；若通过 include 路径切换，可将它的目录放在最前。

@@ -1,7 +1,7 @@
 #ifndef _WIN32
 #define _POSIX_C_SOURCE 200809L
 #endif
-#include "oled_log.h"
+#include "ui_log.h"
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -14,7 +14,7 @@
 
 /* The public function-like macro filters at the call site. This single
  * implementation is shared by all callers/translation units. */
-#undef oled_log_write
+#undef ui_log_write
 
 static uint64_t timestamp_ms(void)
 {
@@ -30,14 +30,14 @@ static uint64_t timestamp_ms(void)
 #if defined(__GNUC__)
 __attribute__((visibility("default")))
 #endif
-void oled_log_write(int level, const char *tag, const char *format, ...)
+void ui_log_write(int level, const char *tag, const char *format, ...)
 {
     char record[1024];
     static const char letters[] = "NEWIDV";
     size_t used, available;
     int count;
     va_list args;
-    if (level < OLED_LOG_ERROR || level > OLED_LOG_VERBOSE) return;
+    if (level < UI_LOG_ERROR || level > UI_LOG_VERBOSE) return;
     count = snprintf(record, sizeof record - 1, "%c (%llu) %.96s: ",
                      letters[level], (unsigned long long)timestamp_ms(), tag ? tag : "-");
     if (count < 0) return;
