@@ -50,10 +50,13 @@ int main(int argc, char **argv)
     oled_fb_draw_dot(127, 0);
     oled_fb_draw_dot(0, 63);
     oled_fb_draw_dot(127, 63);
+    /* Exercise the public data symbol through both static and DLL linkage. */
+    oled_buffer[64] |= 1;
     CHECK(pixel(window, 0, 0) == off);
     oled_fb_send_buffer();
     CHECK(pixel(window, 0, 0) == on && pixel(window, 127, 63) == on);
     CHECK(pixel(window, 127, 0) == on && pixel(window, 0, 63) == on);
+    CHECK(pixel(window, 64, 0) == on);
     CHECK(pixel(window, 1, 0) == off && pixel(window, 0, 1) == off);
     oled_fb_enable(false);
     CHECK(pixel(window, 127, 63) == off);

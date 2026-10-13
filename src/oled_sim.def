@@ -1,5 +1,6 @@
 LIBRARY oled_sim
 EXPORTS
+    oled_buffer DATA
     oled_fb_send_buffer
     oled_fb_fill_buffer
     oled_fb_clear_buffer

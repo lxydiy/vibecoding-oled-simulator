@@ -32,8 +32,8 @@ target_compile_features(oled_objects PUBLIC c_std_11)
 target_include_directories(oled_objects PUBLIC include PRIVATE src)
 target_link_libraries(oled_objects PUBLIC ${PLATFORM_LIBRARIES})
 
-# The DLL/shared library exposes only the original ten OLED functions and
-# switch-state query and log writer. No window/backend symbols are exported.
+# Export the OLED functions and framebuffer, switch query and log writer.
+# No window/backend symbols are exported.
 if(OLED_SIM_BUILD_SHARED)
     add_library(oled_sim SHARED $<TARGET_OBJECTS:oled_objects>)
 else()
@@ -46,6 +46,7 @@ target_compile_features(oled_sim PUBLIC c_std_11)
 target_link_libraries(oled_sim PRIVATE ${PLATFORM_LIBRARIES})
 if(WIN32 AND OLED_SIM_BUILD_SHARED)
     target_sources(oled_sim PRIVATE src/oled_sim.def)
+    target_compile_definitions(oled_sim INTERFACE OLED_SIM_SHARED)
 endif()
 
 # The executable host owns the event-loop lifecycle; application drawing code
