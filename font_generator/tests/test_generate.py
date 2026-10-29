@@ -2,6 +2,7 @@
 import contextlib
 import io
 from pathlib import Path
+import struct
 import sys
 import tempfile
 import unittest
@@ -15,7 +16,7 @@ import generate as gen
 
 class GeneratorTests(unittest.TestCase):
     def setUp(self):
-        scratch = Path(__file__).resolve().parents[3] / 'build' / 'font_generator_tests'
+        scratch = Path(__file__).resolve().parents[2] / 'build' / 'font_generator_tests'
         scratch.mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=scratch)
         self.addCleanup(self.temp.cleanup)
@@ -58,6 +59,120 @@ class GeneratorTests(unittest.TestCase):
         builder.setupMaxp()
         builder.font['head'].created = builder.font['head'].modified = 3400000000
         builder.save(self.root / 'font.ttf')
+
+    def make_pcf(self, endian='<', compressed=True, registry=b'ISO10646', charset_encoding=b'1'):
+        """Original 5x9/9x9 bitmap fixture, including glyph zero and CJK."""
+        fmt = 8 | (4 if endian == '>' else 0)  # MSB pixels, one-byte row padding.
+
+        def pack(form, *values):
+            return struct.pack(endian + form, *values)
+
+        def table(data, flags=0):
+            return struct.pack('<I', fmt | flags) + data
+
+        strings = bytearray()
+
+        def string(value):
+            offset = len(strings)
+            strings.extend(value + b'\0')
+            return offset
+
+        properties = [(b'PIXEL_SIZE', 9), (b'CHARSET_REGISTRY', registry),
+                      (b'CHARSET_ENCODING', charset_encoding)]
+        records = bytearray()
+        for name, value in properties:
+            name_offset = string(name)
+            is_string = isinstance(value, bytes)
+            records.extend(pack('IBI', name_offset, is_string, string(value) if is_string else value))
+        props = table(pack('I', 3) + records + b'\0' + pack('I', len(strings)) + strings)
+        metrics = [(0, 5, 5, 7, 2), (0, 0, 3, 0, 0), (0, 9, 9, 7, 2)]
+        if compressed:
+            metric_table = table(pack('H', 3) + bytes(v + 128 for m in metrics for v in m), 0x100)
+        else:
+            metric_table = table(pack('I', 3) + b''.join(pack('5hH', *m, 0) for m in metrics))
+        accel = table(bytes([0, 0, 0, 0, 1, 0, 0, 0]) + pack('3i', 7, 2, 0)
+                      + pack('5hH', *metrics[1], 0) + pack('5hH', *metrics[2], 0))
+        # A/B share glyph zero; the last pixel row exercises the second OLED page.
+        pixels = bytes([0x88, 0x50, 0x20, 0xF8, 0x88, 0x88, 0x88, 0x00, 0xF8])
+        pixels += bytes([0xFF, 0x80] + [0x80, 0x80] * 7 + [0xFF, 0x80])
+        bitmaps = table(pack('I3I4I', 3, 0, 9, 9, *([len(pixels)] * 4)) + pixels)
+        indices = [0xffff] * (0x4f * 256)
+        indices[32], indices[65], indices[66], indices[0x4e2d] = 1, 0, 0, 2
+        encoding = table(pack('5H', 0, 255, 0, 0x4e, 65) + pack(f'{len(indices)}H', *indices))
+        tables = [(1, props), (2, accel), (4, metric_table), (8, bitmaps), (32, encoding)]
+        offset = 8 + 16 * len(tables)
+        toc, body = bytearray(), bytearray()
+        for tag, data in tables:
+            data += bytes((-len(data)) % 4)
+            toc.extend(struct.pack('<4I', tag, struct.unpack('<I', data[:4])[0], len(data), offset))
+            body.extend(data)
+            offset += len(data)
+        path = self.root / 'font.pcf'
+        path.write_bytes(b'\x01fcp' + struct.pack('<I', len(tables)) + toc + body)
+        return path
+
+    def test_pcf_native_pixels_unicode_and_byte_orders(self):
+        for endian in ('<', '>'):
+            for compressed in (True, False):
+                with self.subTest(endian=endian, compressed=compressed):
+                    path = self.make_pcf(endian, compressed)
+                    spec = gen.FontSpec('tiny', path, 256, set(map(ord, ' AB中')))
+                    mapping, glyphs, bitmap, height, baseline = gen.rasterize(spec, [])
+                    self.assertEqual(mapping, [32, 65, 66, 0x4e2d])
+                    self.assertEqual((height, baseline), (9, 7))
+                    self.assertEqual(glyphs[0][-1], 3)  # Space still advances.
+                    self.assertEqual(glyphs[1][1:], (5, 9, 0, -7, 5))
+                    self.assertEqual(glyphs[1], glyphs[2])
+                    offset = glyphs[1][0]
+                    self.assertEqual(bitmap[offset:offset + 10], bytes([0x79, 0x0A, 0x0C, 0x0A, 0x79, 1, 1, 1, 1, 1]))
+                    self.assertEqual(glyphs[3][1:], (9, 9, 0, -7, 9))
+                    offset = glyphs[3][0]
+                    self.assertEqual(bitmap[offset:offset + 18], bytes([255] + [1] * 7 + [255] + [1] * 9))
+
+    def test_pcf_wenquanyi_legacy_charset_spelling(self):
+        path = self.make_pcf(charset_encoding=b'-1')
+        result = gen.rasterize(gen.FontSpec('tiny', path, None, {65, 0x4e2d}), [])
+        self.assertEqual(result[0], [65, 0x4e2d])
+
+    def test_pcf_pixel_size_ignored_or_omitted_and_determinism(self):
+        self.make_pcf()
+        base = self.minimal('        title: "AB中 "\n').replace('font.ttf', 'font.pcf')
+        snapshot = None
+        for size in ('1', '256', '0', 'false', 'null', '"ignored"', None):
+            config = base.replace('    pixel_size: 16\n', '' if size is None else f'    pixel_size: {size}\n')
+            paths, warnings = gen.generate(self.write(config), self.output)
+            current = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in paths}
+            if snapshot is not None:
+                self.assertEqual(snapshot, current)
+            snapshot = current
+            self.assertEqual(any('pixel_size ignored' in w for w in warnings), size is not None)
+        # Outline font validation remains strict.
+        for size in ('0', 'false', 'null'):
+            with self.assertRaisesRegex(gen.ResourceError, 'pixel_size'):
+                gen.load_resources(self.write(self.minimal().replace('pixel_size: 16', 'pixel_size: ' + size)))
+
+    def test_pcf_missing_glyphs_and_invalid_files_preserve_output(self):
+        path = self.make_pcf()
+        config = self.minimal().replace('font.ttf', 'font.pcf')
+        paths, _ = gen.generate(self.write(config), self.output)
+        snapshot = {p.name: p.read_bytes() for p in paths}
+        spec = gen.FontSpec('tiny', path, None, {65}, {66, 0x1f600})
+        warnings = []
+        self.assertEqual(gen.rasterize(spec, warnings)[0], [65, 66])
+        self.assertIn('U+1F600', warnings[0])
+        spec.required.add(0x1f600)
+        with self.assertRaisesRegex(gen.ResourceError, 'missing required glyphs'):
+            gen.rasterize(spec, [])
+        original = path.read_bytes()
+        for data in (b'bad', original[:12], original[:-100]):
+            path.write_bytes(data)
+            with contextlib.redirect_stderr(io.StringIO()) as stream:
+                self.assertEqual(gen.main([str(self.config), '-o', str(self.output)]), 1)
+            self.assertIn('invalid PCF', stream.getvalue())
+            self.assertEqual(snapshot, {p.name: p.read_bytes() for p in paths})
+        self.make_pcf(registry=b'GB2312')
+        with self.assertRaisesRegex(gen.ResourceError, 'ISO10646-1'):
+            gen.generate(self.config, self.output)
 
     def test_duplicate_yaml_and_page_case(self):
         with self.assertRaisesRegex(gen.ResourceError, 'duplicate YAML key'):

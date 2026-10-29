@@ -1,6 +1,6 @@
 # OLED 字体生成器
 
-用 Python 将 YAML 文案和 TTF/OTF/TTC 字体转换为可直接编译的单色 C 字库。生成结果包含字体、Unicode 索引和字符串宏，适合加入源代码管理。
+用 Python 将 YAML 文案和 TTF/OTF/TTC 字体或 PCF 点阵字体转换为可直接编译的单色 C 字库。生成结果包含字体、Unicode 索引和字符串宏，适合加入源代码管理。
 
 ## 快速开始
 
@@ -137,14 +137,31 @@ pages:
 
 | 字段 | 类型 / 必填 | 行为 |
 | --- | --- | --- |
-| `source` | 非空字符串，必填 | 字体路径，相对 YAML 所在目录；也允许绝对路径。支持带 Unicode cmap 的 TTF/OTF/TTC，TTC 固定使用第 0 个字体。 |
-| `pixel_size` | 整数，必填 | 请求的栅格化尺寸，1–256 像素；布尔值不算整数。实际行高、基线、字形包围盒由字体度量计算，不强制裁成正方形。 |
+| `source` | 非空字符串，必填 | 字体路径，相对 YAML 所在目录；也允许绝对路径。支持带 Unicode cmap 的 TTF/OTF/TTC（TTC 固定使用第 0 个字体），以及 ISO10646-1 编码的 `.pcf` 点阵字体，扩展名不区分大小写。 |
+| `pixel_size` | TTF/OTF/TTC 必填；PCF 可省略 | 轮廓字体请求的栅格化尺寸，整数 1–256 像素，布尔值不算整数。PCF 完全忽略此字段的值，填写时提示警告，使用字体内部 `PIXEL_SIZE` 选择原生点阵，不缩放。实际行高、基线、字形包围盒由字体度量计算，不强制裁成正方形。 |
 | `bpp` | 可选，内容不解释 | OLED 后端一律生成 1 bpp。只要配置出现此字段，一次成功转换最多输出一条忽略警告。 |
 | `extra_ranges` | 可选列表 | 每项包含整数 `from` 和 `to`，两端包含，重叠自动合并。 |
 | `extra_chars` | 可选字符串或列表 | 字符串拆成 Unicode 码点；列表元素允许字符串或整数，其他类型报错。 |
 | `extra_chars_files` | 可选路径列表 | 字典路径相对 YAML 所在目录；读取 UTF-8 纯文本，无 BOM。 |
 
 Unicode 整数允许十进制或 `0x` 十六进制，限 `0–0x10FFFF`，排除代理项 `0xD800–0xDFFF`。反向区间、穿过代理项的区间报错；单个区间以及每种字体请求的唯一字符数均最多 65,535，避免误配置生成过大资源。
+
+PCF 示例（配置放在 `font_generator` 目录时）：
+
+```yaml
+namespace: ui
+fonts:
+  wqy_9pt:
+    source: fonts/wenquanyi_9pt.pcf
+    # pixel_size 可省略；即使填写 32，也仍使用字体原始点阵。
+pages:
+  home:
+    - font: wqy_9pt
+      texts:
+        title: "中文测试"
+```
+
+`wenquanyi_9pt.pcf` 内部 `PIXEL_SIZE` 为 12，不是文件名中的 9；行高和基线还会包含字体自身的上升、下降度量。字形保留原始像素、前进宽度和相对基线的位置，再转换为 OLED 的纵向位打包格式。中文使用完整的 PCF 双字节编码表，不限于前 256 个字符。兼容文泉驿旧版将 `CHARSET_ENCODING` 写为 `-1` 的字体；其他非 Unicode 编码会明确报错。PCF 必须包含有效的正整数 `PIXEL_SIZE` 属性；压缩的 `.pcf.gz` 暂不支持，请先解压为 `.pcf`。
 
 `extra_chars: "123123"` 等价于额外请求 `1`、`2`、`3`。`extra_chars: [0x1234]` 请求 U+1234；`extra_chars: ["0x1234"]` 不解析数值。`true`、`null`、浮点数等不会自动转换。
 
@@ -290,12 +307,12 @@ ui_text_draw(0, 0, &ui_font_simsun_16, buffer);
 在项目根目录执行：
 
 ```powershell
-python -m unittest discover -s tests -p test_generate.py -v
+python -m unittest discover -s font_generator/tests -p test_generate.py -v
 cmake -S . -B build
 cmake --build build --config Release
 ```
 
-Python 测试自行构造小型字体，不依赖本机宋体；覆盖重复键、宏冲突、字体分组并集、严格类型、字典警告、UTF-8 转义、码点与字形下标对应、点阵复用、重复生成一致性及失败时保留旧输出。CMake 独立构建模拟器，可运行模拟器检查实际显示效果。
+Python 测试自行构造小型 TTF 和 PCF 字体，不依赖本机宋体；覆盖重复键、宏冲突、字体分组并集、严格类型、字典警告、UTF-8 转义、码点与字形下标对应、点阵复用、重复生成一致性及失败时保留旧输出。PCF 另覆盖大小端、压缩/非压缩度量、中文映射、原始像素、空格宽度、内置字号和忽略配置字号。CMake 独立构建模拟器，可运行模拟器检查实际显示效果。
 
 生成器成功返回 0；配置、字体或文件错误返回 1，并向 stderr 输出诊断。警告不会使转换失败。
 
@@ -303,4 +320,5 @@ Python 测试自行构造小型字体，不依赖本机宋体；覆盖重复键�
 
 - [Pillow ImageFont](https://pillow.readthedocs.io/en/stable/reference/ImageFont.html)：使用 BASIC 布局、单色 `getmask2` 和基线锚点提取点阵与度量。
 - [fontTools TTFont](https://fonttools.readthedocs.io/en/stable/ttLib/ttFont.html)：读取 Unicode cmap，并在栅格化前检查字符是否存在。
+- [PCF 格式](https://fontforge.org/docs/techref/pcf-format.html)：读取字体内置字号和完整 Unicode 字符覆盖；点阵及字形度量由 Pillow/FreeType 解码。
 

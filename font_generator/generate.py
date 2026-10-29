@@ -13,6 +13,8 @@ import yaml
 from fontTools.ttLib import TTFont
 from PIL import ImageFont
 
+from pcf import read_pcf_metadata
+
 
 class ResourceError(ValueError):
     pass
@@ -139,7 +141,7 @@ def resolve_path(value, base, where):
 class FontSpec:
     name: str
     source: Path
-    size: int
+    size: int | None
     required: set[int] = field(default_factory=set)
     dictionary: set[int] = field(default_factory=set)
 
@@ -190,10 +192,16 @@ def load_resources(path: Path) -> Resources:
             raise ResourceError(f'{location(raw_fonts, name)}: font names allow only lowercase letters, digits and underscores')
         raw = require_mapping(raw, f'fonts.{name}')
         unknown(raw, ('source', 'pixel_size', 'bpp', 'extra_ranges', 'extra_chars', 'extra_chars_files'), f'fonts.{name}')
-        size = required(raw, 'pixel_size', name)
-        if type(size) is not int or not 1 <= size <= 256:
-            raise ResourceError(f'{name}.pixel_size: expected an integer from 1 to 256')
-        spec = FontSpec(name, resolve_path(required(raw, 'source', name), path.parent, name + '.source'), size)
+        source = resolve_path(required(raw, 'source', name), path.parent, name + '.source')
+        if source.suffix.lower() == '.pcf':
+            size = None
+            if 'pixel_size' in raw:
+                warnings.append(f'{name}: pixel_size ignored for PCF; using the font native bitmap size')
+        else:
+            size = required(raw, 'pixel_size', name)
+            if type(size) is not int or not 1 <= size <= 256:
+                raise ResourceError(f'{name}.pixel_size: expected an integer from 1 to 256')
+        spec = FontSpec(name, source, size)
         bpp_ignored |= 'bpp' in raw
         for item in require_list(raw.get('extra_ranges', []), name + '.extra_ranges'):
             item = require_mapping(item, name + '.extra_ranges[]')
@@ -290,9 +298,16 @@ def codes_summary(points):
 def rasterize(spec: FontSpec, warnings: list[str]):
     if not spec.source.is_file():
         raise ResourceError(f'{spec.name}: font file not found: {spec.source}')
-    with TTFont(spec.source, fontNumber=0, lazy=True) as face:
-        cmap = face.getBestCmap() or {}
-        supported = {cp for cp, glyph in cmap.items() if face.getGlyphID(glyph) != 0}
+    size = spec.size
+    if spec.source.suffix.lower() == '.pcf':
+        try:
+            size, supported = read_pcf_metadata(spec.source)
+        except ValueError as exc:
+            raise ResourceError(f'{spec.name}: invalid PCF font: {exc}') from exc
+    else:
+        with TTFont(spec.source, fontNumber=0, lazy=True) as face:
+            cmap = face.getBestCmap() or {}
+            supported = {cp for cp, glyph in cmap.items() if face.getGlyphID(glyph) != 0}
     missing = spec.required - supported
     if missing:
         raise ResourceError(f'{spec.name}: missing required glyphs: {codes_summary(missing)}')
@@ -300,7 +315,7 @@ def rasterize(spec: FontSpec, warnings: list[str]):
     if optional_missing:
         warnings.append(f'{spec.name}: dictionary glyphs missing and skipped: {codes_summary(optional_missing)}')
     points = sorted((spec.required | spec.dictionary) & supported)
-    font = ImageFont.truetype(str(spec.source), spec.size, index=0, layout_engine=ImageFont.Layout.BASIC)
+    font = ImageFont.truetype(str(spec.source), size, index=0, layout_engine=ImageFont.Layout.BASIC)
     ascent, descent = font.getmetrics()
     top, bottom = -ascent, descent
     bitmap = bytearray()
