@@ -1,0 +1,39 @@
+# Runnable example. Put your font in fonts/simsun.ttc (first face is used).
+namespace: ui
+
+fonts:
+  simsun_16:
+    source: fonts/simsun.ttc
+    pixel_size: 16
+    bpp: 1
+    extra_ranges:
+      - from: 0x20
+        to: 0x7E
+    extra_chars: "℃"
+  simsun_32:
+    source: fonts/simsun.ttc
+    pixel_size: 32
+    bpp: 2
+
+pages:
+  home:
+    - font: simsun_16
+      texts:
+        confirm: "确定"
+        Confirm: "确定"
+        cancel: "取消"
+        hint: "Enter to exit"
+    - font: simsun_32
+      texts:
+        confirm: "确定"
+        cancel: "取消"
+  heater:
+    - font: simsun_16
+      texts:
+        title: "感应加热"
+        temp_format: "%d℃"
+        running: "加热中"
+  settings:
+    - font: simsun_16
+      texts:
+        title: "设置"
