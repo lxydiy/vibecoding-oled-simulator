@@ -25,5 +25,4 @@ void sim_snapshot(sim_frame *frame);
 void sim_set_key(unsigned index, bool pressed);
 void sim_reset_keys(void);
 void sim_mark_closed(void);
-bool sim_is_closed(void);
 #endif

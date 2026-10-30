@@ -5,6 +5,7 @@
 #include <string.h>
 #include "oled_fb.h"
 #include "oled_switch.h"
+#include "oled_sim.h"
 
 #define CHECK(condition) do { if (!(condition)) { fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #condition); exit(1); } } while (0)
 
@@ -35,7 +36,16 @@ int main(int argc, char **argv)
 {
     CHECK(!oled_switch_is_pressed(1));
     oled_fb_init();
-    HWND window = FindWindowW(L"HeaterOLEDSimulatorWindow", NULL);
+    CHECK(oled_sim_is_closed() == false);
+    HWND window = NULL;
+    /* Other simulator instances must not receive this test's window messages. */
+    while (true) {
+        window = FindWindowExW(NULL, window, L"HeaterOLEDSimulatorWindow", NULL);
+        if (window == NULL) break;
+        DWORD process_id;
+        GetWindowThreadProcessId(window, &process_id);
+        if (process_id == GetCurrentProcessId()) break;
+    }
     CHECK(window != NULL);
     if (argc == 2 && strcmp(argv[1], "--exit-open") == 0) {
         oled_fb_fill_buffer(0xFF);
@@ -85,6 +95,7 @@ int main(int argc, char **argv)
     for (uint8_t key = 1; key <= 4; ++key) CHECK(!oled_switch_is_pressed(key));
     SendMessageW(window, WM_KEYDOWN, '1', 0);
     SendMessageW(window, WM_CLOSE, 0, 0);
+    CHECK(oled_sim_is_closed());
     CHECK(!oled_switch_is_pressed(1));
     /* The library must not terminate its host when the viewer closes. */
     oled_fb_send_buffer();

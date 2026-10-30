@@ -1,4 +1,5 @@
 #include "sim_backend.h"
+#include "oled_sim.h"
 #include "oled_switch.h"
 #include <string.h>
 
@@ -55,7 +56,7 @@ void sim_mark_closed(void)
     sim_unlock();
 }
 
-bool sim_is_closed(void)
+OLED_EXPORT bool oled_sim_is_closed(void)
 {
     bool result;
     sim_lock();

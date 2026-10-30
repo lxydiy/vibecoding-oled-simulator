@@ -32,8 +32,8 @@ target_compile_features(oled_objects PUBLIC c_std_11)
 target_include_directories(oled_objects PUBLIC include PRIVATE src)
 target_link_libraries(oled_objects PUBLIC ${PLATFORM_LIBRARIES})
 
-# Export the OLED functions and framebuffer, switch query and log writer.
-# No window/backend symbols are exported.
+# Export the OLED functions and framebuffer, switch/close queries and log writer.
+# Internal backend symbols are not exported.
 if(OLED_SIM_BUILD_SHARED)
     add_library(oled_sim SHARED $<TARGET_OBJECTS:oled_objects>)
 else()

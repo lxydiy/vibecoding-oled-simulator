@@ -1,4 +1,5 @@
 #include "sim_backend.h"
+#include "oled_sim.h"
 #include "demo.h"
 #include "ui_log.h"
 #include <stdio.h>
@@ -15,7 +16,7 @@ int main(int argc, char **argv)
     demo_init();
     UI_LOGI("sim", "hold keys 1-4; close the window or press Esc to exit");
     unsigned frames = 0;
-    while (!sim_is_closed()) {
+    while (oled_sim_is_closed() == false) {
         demo_update();
         sim_sleep(16);
         if (smoke && ++frames >= 60) break;
