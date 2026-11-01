@@ -33,6 +33,30 @@ class GeneratorTests(unittest.TestCase):
                 '    pixel_size: 16\n' + extra +
                 'pages:\n  home:\n    - font: tiny\n      texts:\n' + texts)
 
+    def test_relative_include(self):
+        fragments = self.root / 'fragments'
+        fragments.mkdir()
+        (fragments / 'page.yml').write_text(
+            '- font: tiny\n  texts: !include texts.yml\n', encoding='utf-8')
+        (fragments / 'texts.yml').write_text('text_0001: "中"\n', encoding='utf-8')
+        self.write(self.minimal().split('pages:')[0] + 'pages:\n  settings: !include fragments/page.yml\n')
+        resources = gen.load_resources(self.config)
+        self.assertEqual(resources.texts, {'UI_TEXT_SETTINGS_TEXT_0001': '中'})
+        self.assertIn(ord('中'), resources.fonts['tiny'].required)
+
+    def test_include_cycle_missing_file_and_duplicate_key(self):
+        fragment = self.root / 'fragment.yml'
+        self.write('!include fragment.yml\n')
+        fragment.write_text('!include resources.yml\n', encoding='utf-8')
+        with self.assertRaisesRegex(gen.ResourceError, 'circular YAML include'):
+            gen.load_resources(self.config)
+        fragment.write_text('key: 1\nkey: 2\n', encoding='utf-8')
+        with self.assertRaisesRegex(gen.ResourceError, 'duplicate YAML key'):
+            gen.load_resources(self.config)
+        fragment.unlink()
+        with self.assertRaises(OSError):
+            gen.load_resources(self.config)
+
     def make_font(self):
         builder = FontBuilder(1000, isTTF=True)
         builder.setupGlyphOrder(['.notdef', 'space', 'box'])

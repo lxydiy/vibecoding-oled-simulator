@@ -155,8 +155,10 @@ class Resources:
     text_escapes: dict[str, set[int]]
 
 
-def load_resources(path: Path) -> Resources:
+def load_yaml(path: Path, parents=()):
     path = path.resolve()
+    if path in parents:
+        raise ResourceError(f'{path}: circular YAML include')
     try:
         source = path.read_text(encoding='utf-8')
         # Reject alias graphs, so schema walking cannot encounter recursive data.
@@ -166,12 +168,29 @@ def load_resources(path: Path) -> Resources:
         with path.open(encoding='utf-8') as stream:
             loader = ResourceLoader(stream)
             loader.source = source
+            loader.path = path
+            loader.parents = (*parents, path)
             try:
-                root = require_mapping(loader.get_single_data(), str(path))
+                return loader.get_single_data()
             finally:
                 loader.dispose()
     except (UnicodeError, yaml.YAMLError) as exc:
         raise ResourceError(f'{path}: invalid UTF-8/YAML: {exc}') from exc
+
+
+def construct_include(loader, node):
+    relative = loader.construct_scalar(node)
+    if not relative or Path(relative).is_absolute():
+        raise ResourceError(f'{node.start_mark}: include must be a relative path')
+    return load_yaml(loader.path.parent / relative, loader.parents)
+
+
+ResourceLoader.add_constructor('!include', construct_include)
+
+
+def load_resources(path: Path) -> Resources:
+    path = path.resolve()
+    root = require_mapping(load_yaml(path), str(path))
     warnings = []
 
     def unknown(mapping, known, where):
